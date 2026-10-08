@@ -221,7 +221,7 @@ function Index() {
 const inputCls =
   "w-full rounded-2xl border-2 border-input bg-card px-4 py-3 text-lg outline-none focus:border-primary";
 
-function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
+function Field({ label, error, children }: { label: string; error?: string | undefined; children: React.ReactNode }) {
   return (
     <label className="block">
       <span className="mb-1 block font-semibold">{label}</span>
