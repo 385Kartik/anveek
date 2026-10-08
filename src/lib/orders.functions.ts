@@ -63,3 +63,24 @@ export const setOrderStatus = createServerFn({ method: "POST" })
     if (error) throw new Error("Update failed");
     return { ok: true };
   });
+
+export const setPaymentStatus = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) =>
+    z
+      .object({
+        password: z.string().max(200),
+        id: z.string().uuid(),
+        payment_status: z.enum(["unpaid", "paid"]),
+      })
+      .parse(i),
+  )
+  .handler(async ({ data }) => {
+    checkPw(data.password);
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { error } = await supabaseAdmin
+      .from("orders")
+      .update({ payment_status: data.payment_status })
+      .eq("id", data.id);
+    if (error) throw new Error("Update failed");
+    return { ok: true };
+  });
