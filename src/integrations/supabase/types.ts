@@ -20,6 +20,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          payment_status: string
           phone1: string
           phone2: string | null
           quantity: number
@@ -30,6 +31,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
+          payment_status?: string
           phone1: string
           phone2?: string | null
           quantity?: number
@@ -40,6 +42,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
+          payment_status?: string
           phone1?: string
           phone2?: string | null
           quantity?: number
