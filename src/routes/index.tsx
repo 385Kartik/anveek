@@ -28,14 +28,14 @@ function Index() {
   const [qty, setQty] = useState(1);
   const [step, setStep] = useState<Step>("shop");
   const [f, setF] = useState({ name: "", phone1: "", phone2: "", address: "" });
-  const [err, setErr] = useState<Record<string, string>>({});
+  const [err, setErr] = useState<Partial<Record<"name" | "phone1" | "phone2" | "address", string>>>({});
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const submit = useServerFn(createOrder);
   const total = qty * PRICE;
 
   const validate = () => {
-    const e: Record<string, string> = {};
+    const e: Partial<Record<"name" | "phone1" | "phone2" | "address", string>> = {};
     if (f.name.trim().length < 2) e.name = L.errName;
     if (!/^[6-9]\d{9}$/.test(f.phone1)) e.phone1 = L.errPhone;
     if (f.phone2 && !/^[6-9]\d{9}$/.test(f.phone2)) e.phone2 = L.errPhone;
