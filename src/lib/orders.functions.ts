@@ -21,7 +21,10 @@ export const createOrder = createServerFn({ method: "POST" })
       address: data.address,
       quantity: data.quantity,
     });
-    if (error) throw new Error("Order failed");
+    if (error) {
+      console.error("[createOrder] Supabase error:", error);
+      throw new Error("Order failed: " + error.message);
+    }
     return { ok: true };
   });
 
@@ -39,7 +42,10 @@ export const listOrders = createServerFn({ method: "POST" })
       .from("orders")
       .select("*")
       .order("created_at", { ascending: false });
-    if (error) throw new Error("Load failed");
+    if (error) {
+      console.error("[listOrders] Supabase error:", error);
+      throw new Error("Load failed: " + error.message);
+    }
     return rows;
   });
 
@@ -60,7 +66,10 @@ export const setOrderStatus = createServerFn({ method: "POST" })
       .from("orders")
       .update({ status: data.status })
       .eq("id", data.id);
-    if (error) throw new Error("Update failed");
+    if (error) {
+      console.error("[setOrderStatus] Supabase error:", error);
+      throw new Error("Update failed: " + error.message);
+    }
     return { ok: true };
   });
 
@@ -81,6 +90,9 @@ export const setPaymentStatus = createServerFn({ method: "POST" })
       .from("orders")
       .update({ payment_status: data.payment_status })
       .eq("id", data.id);
-    if (error) throw new Error("Update failed");
+    if (error) {
+      console.error("[setPaymentStatus] Supabase error:", error);
+      throw new Error("Update failed: " + error.message);
+    }
     return { ok: true };
   });
