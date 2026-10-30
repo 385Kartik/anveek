@@ -16,6 +16,13 @@ dist-ssr
 .nitro
 *.local
 
+# WhatsApp Baileys session credentials (KEEP PRIVATE)
+whatsapp-auth/
+auth_info_baileys/
+
+# Runtime data
+data/
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

@@ -1,3 +1,9 @@
+try {
+  if (typeof process !== "undefined" && typeof (process as any).loadEnvFile === "function") {
+    (process as any).loadEnvFile();
+  }
+} catch (e) {}
+
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -16,6 +22,15 @@ async function getServerEntry(): Promise<ServerEntry> {
     );
   }
   return serverEntryPromise;
+}
+
+let waInitialized = false;
+function ensureWhatsApp() {
+  if (waInitialized) return;
+  waInitialized = true;
+  import("./lib/whatsapp.server")
+    .then((m) => m.initWhatsApp().catch((err) => console.error("[WhatsApp] Startup error:", err)))
+    .catch(() => {});
 }
 
 // h3 swallows in-handler throws into a normal 500 Response with body
@@ -46,10 +61,20 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    // Ensure WhatsApp connection starts on server traffic
+    ensureWhatsApp();
+
     try {
       const handler = await getServerEntry();
       const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const res = await normalizeCatastrophicSsrResponse(response);
+      const ct = res.headers.get("content-type") ?? "";
+      if (ct.includes("text/html")) {
+        res.headers.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.headers.set("Pragma", "no-cache");
+        res.headers.set("Expires", "0");
+      }
+      return res;
     } catch (error) {
       console.error(error);
       return new Response(renderErrorPage(), {

@@ -115,14 +115,21 @@ export async function initWhatsApp() {
         sock = null;
         isInitializing = false;
 
-        const isLoggedOut = statusCode === DisconnectReason.loggedOut;
-        const isRestart = statusCode === DisconnectReason.restartRequired;
+        const isLoggedOut =
+          statusCode === DisconnectReason.loggedOut ||
+          statusCode === DisconnectReason.forbidden ||
+          statusCode === DisconnectReason.badSession ||
+          statusCode === DisconnectReason.multideviceMismatch ||
+          statusCode === 401 ||
+          statusCode === 403;
+        const isRestart = statusCode === DisconnectReason.restartRequired || statusCode === 515;
 
         if (isLoggedOut) {
-          console.log("[WhatsApp] Device was logged out. Clearing auth so fresh QR can generate.");
+          console.log("[WhatsApp] Device was logged out / unlinked from phone. Wiping session files to prevent loop.");
           clearAuthDir();
           qrCodeString = null;
           qrCodeDataUrl = null;
+          connectionStatus = "close";
         } else if (isRestart) {
           console.log("[WhatsApp] Restart required (handshake completed after scan). Reconnecting immediately...");
           setTimeout(() => {
@@ -206,6 +213,41 @@ export async function requestFreshQr(force = false): Promise<{
   return getWhatsAppStatus();
 }
 
+export async function disconnectWhatsApp(): Promise<{
+  status: string;
+  qr: string | null;
+  qrDataUrl: string | null;
+}> {
+  console.log("[WhatsApp] Manual disconnect requested from admin panel. Logging out and wiping session...");
+
+  try {
+    if (sock) {
+      try {
+        await sock.logout();
+      } catch (logoutErr) {
+        console.log("[WhatsApp] sock.logout() notice:", logoutErr);
+      }
+      try {
+        sock.ev.removeAllListeners("connection.update");
+        sock.ev.removeAllListeners("creds.update");
+        sock.end(undefined);
+      } catch {}
+      sock = null;
+    }
+  } catch (e) {
+    console.error("[WhatsApp] Error during socket cleanup:", e);
+  }
+
+  isInitializing = false;
+  clearAuthDir();
+  qrCodeString = null;
+  qrCodeDataUrl = null;
+  connectionStatus = "close";
+
+  console.log("[WhatsApp] Session wiped completely. Ready for fresh pairing.");
+  return getWhatsAppStatus();
+}
+
 export interface OrderConfirmationDetails {
   name: string;
   phone1: string;
@@ -250,6 +292,8 @@ export async function sendOrderConfirmationMessage(details: OrderConfirmationDet
 ઉપર આપેલ QR કોડ સ્કેન કરીને *₹${total}* ચૂકવણી (Google Pay / PhonePe / Paytm / UPI) કરી શકો છો.
 પેમેન્ટ કર્યા પછી તેનો સ્ક્રીનશોટ આ જ નંબર પર મોકલી આપો.
 
+✏️ *ઓર્ડરમાં કોઈ ફેરફાર (જથ્થો કે સરનામું) કરવો હોય તો આ જ નંબર પર મેસેજ અથવા કૉલ કરી શકો છો.*
+
 તમારો ઓર્ડર ટૂંક સમયમાં તૈયાર કરીને તમારા સરનામે રવાના કરવામાં આવશે.
 
 કોઈપણ પ્રશ્ન હોય તો આ જ નંબર પર સંપર્ક કરી શકો છો.
@@ -271,6 +315,8 @@ Your order has been successfully placed! 🙏
 💳 *For Online Payment:*
 Please scan the QR code above and pay *₹${total}* via UPI (Google Pay / PhonePe / Paytm).
 After payment, please share the payment screenshot on this WhatsApp number.
+
+✏️ *To modify your order (Quantity or Address), feel free to reply to this WhatsApp message or call us.*
 
 Your order will be packed and dispatched to your address soon.
 
@@ -303,6 +349,87 @@ Thank you,
     return true;
   } catch (err) {
     console.error(`[WhatsApp] Failed to send message to ${jid}:`, err);
+    return false;
+  }
+}
+
+export async function sendOrderUpdatedMessage(details: OrderConfirmationDetails) {
+  if (!sock || connectionStatus !== "open") {
+    console.warn("[WhatsApp] Cannot send update message - WhatsApp is not connected.");
+    return false;
+  }
+
+  let cleanPhone = details.phone1.replace(/\D/g, "");
+  if (cleanPhone.length === 10) {
+    cleanPhone = "91" + cleanPhone;
+  }
+  const jid = `${cleanPhone}@s.whatsapp.net`;
+
+  const rawLang = String(details.lang || "").toLowerCase().trim();
+  const lang = (rawLang === "en" || rawLang === "english") ? "en" : "gu";
+  const total = details.totalPrice ?? details.quantity * 3500;
+
+  const gujaratiMessage = `🌿 *અન્વીક સીંગતેલ - ઓર્ડર અપડેટ* 🌿
+
+નમસ્તે *${details.name}* જી,
+તમારી વિનંતી મુજબ તમારો ઓર્ડર સફળતાપૂર્વક અપડેટ કરવામાં આવ્યો છે! ✅
+
+📦 *સુધારેલી ઓર્ડર વિગતો:*
+• જથ્થો: *${details.quantity > 1 ? `${details.quantity} ડબ્બા` : `1 ડબ્બો`} (15KG)*
+• કુલ નવી રકમ: *₹${total}*
+• ડિલિવરી સરનામું: *${details.address}*
+• મોબાઈલ નંબર: *${details.phone1}*
+
+💳 *ઓનલાઇન પેમેન્ટ:*
+જો બાકી હોય તો ઉપર આપેલ QR કોડ સ્કેન કરીને *₹${total}* ચૂકવણી (Google Pay / PhonePe / Paytm / UPI) કરી શકો છો.
+
+કોઈપણ પ્રશ્ન હોય તો આ જ નંબર પર સંપર્ક કરી શકો છો.
+
+આભાર,
+*અન્વીક ટીમ* ✨`;
+
+  const englishMessage = `🌿 *Anveek Groundnut Oil - Order Updated* 🌿
+
+Hello *${details.name}*,
+As requested, your order has been updated successfully! ✅
+
+📦 *Updated Order Details:*
+• Quantity: *${details.quantity > 1 ? `${details.quantity} Tins` : `1 Tin`} (15KG)*
+• Updated Total Amount: *₹${total}*
+• Delivery Address: *${details.address}*
+• Mobile Number: *${details.phone1}*
+
+💳 *Online Payment:*
+If pending, please scan the QR code and pay *₹${total}* via UPI.
+
+For any queries, feel free to contact us on this number.
+
+Thank you,
+*Anveek Team* ✨`;
+
+  const message = lang === "en" ? englishMessage : gujaratiMessage;
+
+  try {
+    const qrBuffer = getPaymentQrBuffer();
+    if (qrBuffer) {
+      try {
+        await sock.sendMessage(jid, {
+          image: qrBuffer,
+          caption: message,
+          mimetype: "image/jpeg",
+        });
+        console.log(`[WhatsApp] Order update message with QR image sent successfully to ${jid}`);
+        return true;
+      } catch (imgErr) {
+        console.error(`[WhatsApp] Failed to send update image to ${jid}, falling back to text:`, imgErr);
+      }
+    }
+
+    await sock.sendMessage(jid, { text: message });
+    console.log(`[WhatsApp] Order update message sent successfully to ${jid}`);
+    return true;
+  } catch (err) {
+    console.error(`[WhatsApp] Failed to send update message to ${jid}:`, err);
     return false;
   }
 }
