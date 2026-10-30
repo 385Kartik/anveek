@@ -94,7 +94,7 @@ export const t = {
     fssaiTitle: "FSSAI License",
     fssaiVal: "10012021000302",
     unrefinedTitle: "Type",
-    unrefinedVal: "Unrefined Native Groundnut Oil",
+    unrefinedVal: "Unrefined Native Groundnut Oil.",
     headerOrigin: "JUNAGADH",
   },
 } as const;
