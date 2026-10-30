@@ -52,7 +52,7 @@ export const t = {
   },
   en: {
     brand: "Anveek",
-    tag: "Cold Pressed",
+    tag: "Unrefined",
     title: "Groundnut Oil",
     sub: "From village peanuts, straight to your kitchen",
     box: "15KG Tin",
