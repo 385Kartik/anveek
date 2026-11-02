@@ -123,6 +123,7 @@ export async function initWhatsApp() {
           statusCode === 401 ||
           statusCode === 403;
         const isRestart = statusCode === DisconnectReason.restartRequired || statusCode === 515;
+        const isReplaced = statusCode === DisconnectReason.connectionReplaced || statusCode === 440;
 
         if (isLoggedOut) {
           console.log("[WhatsApp] Device was logged out / unlinked from phone. Wiping session files to prevent loop.");
@@ -130,13 +131,16 @@ export async function initWhatsApp() {
           qrCodeString = null;
           qrCodeDataUrl = null;
           connectionStatus = "close";
+        } else if (isReplaced) {
+          console.log("[WhatsApp] Connection was replaced by another active session/server (status: 440). Halting auto-reconnect to prevent kick-off conflict.");
+          connectionStatus = "close";
         } else if (isRestart) {
           console.log("[WhatsApp] Restart required (handshake completed after scan). Reconnecting immediately...");
           setTimeout(() => {
             initWhatsApp().catch(console.error);
           }, 1000);
         } else {
-          console.log("[WhatsApp] Reconnecting in 3 seconds...");
+          console.log(`[WhatsApp] Reconnecting in 3 seconds (status: ${statusCode})...`);
           setTimeout(() => {
             initWhatsApp().catch(console.error);
           }, 3000);
