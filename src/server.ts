@@ -61,6 +61,19 @@ function isH3SwallowedErrorBody(body: string): boolean {
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    // Check for direct uploaded product image request
+    try {
+      const url = new URL(request.url);
+      if (url.pathname === "/api/product-image") {
+        const { getProductImageResponse } = await import("./lib/product-config.server");
+        const imgRes = getProductImageResponse();
+        if (imgRes) return imgRes;
+        return new Response("Product image not found", { status: 404 });
+      }
+    } catch (e) {
+      console.error("[server] /api/product-image error:", e);
+    }
+
     // Ensure WhatsApp connection starts on server traffic
     ensureWhatsApp();
 

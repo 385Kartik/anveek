@@ -277,11 +277,24 @@ export async function sendOrderConfirmationMessage(details: OrderConfirmationDet
 
   const rawLang = String(details.lang || "").toLowerCase().trim();
   const lang = (rawLang === "en" || rawLang === "english") ? "en" : "gu";
-  const total = details.totalPrice ?? details.quantity * 3500;
+
+  let productName = lang === "en" ? "Groundnut Oil" : "સીંગતેલ";
+  let unitPrice = 3500;
+  try {
+    const { getProductConfig } = await import("./product-config.server");
+    const cfg = getProductConfig();
+    if (cfg) {
+      if (cfg.price) unitPrice = cfg.price;
+      if (lang === "en" && cfg.nameEn) productName = cfg.nameEn;
+      if (lang === "gu" && cfg.nameGu) productName = cfg.nameGu;
+    }
+  } catch {}
+
+  const total = details.totalPrice ?? details.quantity * unitPrice;
 
   console.log(`[WhatsApp] Preparing message for ${jid}. rawLang="${details.lang}", selected lang="${lang}"`);
 
-  const gujaratiMessage = `🌿 *અન્વીક સીંગતેલ* 🌿
+  const gujaratiMessage = `🌿 *અન્વીક ${productName}* 🌿
 
 નમસ્તે *${details.name}* જી,
 તમારો ઓર્ડર સફળતાપૂર્વક નોંધાઈ ગયો છે! 🙏
@@ -305,7 +318,7 @@ export async function sendOrderConfirmationMessage(details: OrderConfirmationDet
 આભાર,
 *અન્વીક ટીમ* ✨`;
 
-  const englishMessage = `🌿 *Anveek Groundnut Oil* 🌿
+  const englishMessage = `🌿 *Anveek ${productName}* 🌿
 
 Hello *${details.name}*,
 Your order has been successfully placed! 🙏
@@ -371,9 +384,22 @@ export async function sendOrderUpdatedMessage(details: OrderConfirmationDetails)
 
   const rawLang = String(details.lang || "").toLowerCase().trim();
   const lang = (rawLang === "en" || rawLang === "english") ? "en" : "gu";
-  const total = details.totalPrice ?? details.quantity * 3500;
 
-  const gujaratiMessage = `🌿 *અન્વીક સીંગતેલ - ઓર્ડર અપડેટ* 🌿
+  let productName = lang === "en" ? "Groundnut Oil" : "સીંગતેલ";
+  let unitPrice = 3500;
+  try {
+    const { getProductConfig } = await import("./product-config.server");
+    const cfg = getProductConfig();
+    if (cfg) {
+      if (cfg.price) unitPrice = cfg.price;
+      if (lang === "en" && cfg.nameEn) productName = cfg.nameEn;
+      if (lang === "gu" && cfg.nameGu) productName = cfg.nameGu;
+    }
+  } catch {}
+
+  const total = details.totalPrice ?? details.quantity * unitPrice;
+
+  const gujaratiMessage = `🌿 *અન્વીક ${productName} - ઓર્ડર અપડેટ* 🌿
 
 નમસ્તે *${details.name}* જી,
 તમારી વિનંતી મુજબ તમારો ઓર્ડર સફળતાપૂર્વક અપડેટ કરવામાં આવ્યો છે! ✅
@@ -392,7 +418,7 @@ export async function sendOrderUpdatedMessage(details: OrderConfirmationDetails)
 આભાર,
 *અન્વીક ટીમ* ✨`;
 
-  const englishMessage = `🌿 *Anveek Groundnut Oil - Order Updated* 🌿
+  const englishMessage = `🌿 *Anveek ${productName} - Order Updated* 🌿
 
 Hello *${details.name}*,
 As requested, your order has been updated successfully! ✅

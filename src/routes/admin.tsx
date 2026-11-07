@@ -10,7 +10,10 @@ import {
   getWhatsAppStatusFn,
   reconnectWhatsAppFn,
   disconnectWhatsAppFn,
+  getProductConfigFn,
+  updateProductConfigFn,
 } from "@/lib/orders.functions";
+import defaultOilCan from "@/assets/anveek-tin.webp";
 
 export const Route = createFileRoute("/admin")({
   head: () => ({
@@ -72,6 +75,40 @@ function Admin() {
   const [showQrModal, setShowQrModal] = useState(false);
   const [waLoading, setWaLoading] = useState(false);
 
+  // Product Settings state
+  const [productConfig, setProductConfig] = useState<{
+    nameGu: string;
+    nameEn: string;
+    tagGu: string;
+    tagEn: string;
+    subGu?: string;
+    subEn?: string;
+    price: number;
+    photoUrl: string;
+  } | null>(null);
+  const [showProductModal, setShowProductModal] = useState(false);
+  const [productForm, setProductForm] = useState<{
+    nameGu: string;
+    nameEn: string;
+    tagGu: string;
+    tagEn: string;
+    price: number;
+    photoUrl: string;
+    photoBase64?: string;
+    photoPreview?: string;
+  }>({
+    nameGu: "સીંગતેલ",
+    nameEn: "Groundnut Oil",
+    tagGu: "ઘાણીનું સીંગતેલ",
+    tagEn: "Unrefined",
+    price: 3500,
+    photoUrl: "",
+    photoPreview: "",
+  });
+  const [productSaving, setProductSaving] = useState(false);
+  const [productMsg, setProductMsg] = useState("");
+  const [productError, setProductError] = useState("");
+
   const load = useServerFn(listOrders);
   const update = useServerFn(setOrderStatus);
   const updatePayment = useServerFn(setPaymentStatus);
@@ -80,6 +117,8 @@ function Admin() {
   const fetchWaStatus = useServerFn(getWhatsAppStatusFn);
   const triggerReconnectWa = useServerFn(reconnectWhatsAppFn);
   const triggerDisconnectWa = useServerFn(disconnectWhatsAppFn);
+  const fetchProductConfig = useServerFn(getProductConfigFn);
+  const saveProductConfigAction = useServerFn(updateProductConfigFn);
 
   const checkWa = async () => {
     try {
@@ -90,13 +129,119 @@ function Admin() {
     }
   };
 
+  const loadProduct = async () => {
+    try {
+      const cfg = await fetchProductConfig();
+      if (cfg) {
+        setProductConfig(cfg);
+        setProductForm({
+          nameGu: cfg.nameGu || "સીંગતેલ",
+          nameEn: cfg.nameEn || "Groundnut Oil",
+          tagGu: cfg.tagGu || "ઘાણીનું સીંગતેલ",
+          tagEn: cfg.tagEn || "Unrefined",
+          price: cfg.price || 3500,
+          photoUrl: cfg.photoUrl || "",
+          photoPreview: cfg.photoUrl || "",
+        });
+      }
+    } catch (e) {
+      console.error("[admin] load product config error:", e);
+    }
+  };
+
   const refresh = async () => {
     setErr("");
     try {
       setRows(await load({ data: { password: pw } }));
       await checkWa();
+      await loadProduct();
     } catch {
       setErr("Wrong password");
+    }
+  };
+
+  const handleOpenProductModal = () => {
+    if (productConfig) {
+      setProductForm({
+        nameGu: productConfig.nameGu || "સીંગતેલ",
+        nameEn: productConfig.nameEn || "Groundnut Oil",
+        tagGu: productConfig.tagGu || "ઘાણીનું સીંગતેલ",
+        tagEn: productConfig.tagEn || "Unrefined",
+        price: productConfig.price || 3500,
+        photoUrl: productConfig.photoUrl || "",
+        photoPreview: productConfig.photoUrl || "",
+        photoBase64: undefined,
+      });
+    }
+    setProductMsg("");
+    setProductError("");
+    setShowProductModal(true);
+  };
+
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      setProductError("Image file size should be less than 8MB");
+      return;
+    }
+    setProductError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      setProductForm((prev) => ({
+        ...prev,
+        photoBase64: result,
+        photoPreview: result,
+      }));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveProduct = async () => {
+    if (!productForm.nameGu.trim() || !productForm.nameEn.trim()) {
+      setProductError("Both Gujarati and English product names are required.");
+      return;
+    }
+    if (!productForm.price || productForm.price <= 0) {
+      setProductError("Price must be greater than ₹0.");
+      return;
+    }
+
+    setProductSaving(true);
+    setProductError("");
+    setProductMsg("");
+
+    try {
+      const updated = await saveProductConfigAction({
+        data: {
+          password: pw,
+          nameGu: productForm.nameGu.trim(),
+          nameEn: productForm.nameEn.trim(),
+          tagGu: productForm.tagGu.trim(),
+          tagEn: productForm.tagEn.trim(),
+          price: Number(productForm.price),
+          photoUrl: productForm.photoUrl.trim(),
+          photoBase64: productForm.photoBase64,
+        },
+      });
+
+      setProductConfig(updated);
+      setProductForm((prev) => ({
+        ...prev,
+        photoUrl: updated.photoUrl || "",
+        photoPreview: updated.photoUrl || "",
+        photoBase64: undefined,
+      }));
+      setProductMsg("Product details updated successfully! Live on website. ✅");
+      setTimeout(() => {
+        setShowProductModal(false);
+        setProductMsg("");
+      }, 1200);
+    } catch (e: any) {
+      setProductError(e?.message || "Failed to update product details.");
+    } finally {
+      setProductSaving(false);
     }
   };
 
@@ -269,7 +414,7 @@ function Admin() {
         "Phone Number 2": o.phone2 ?? "",
         Address: o.address,
         "Quantity (15KG Tins)": o.quantity,
-        "Total Amount (₹)": o.quantity * 3500,
+        "Total Amount (₹)": o.quantity * (productConfig?.price || 3500),
         Payment: o.payment_status,
         Status: o.status,
         Language: o.lang === "en" ? "English" : "Gujarati",
@@ -367,6 +512,41 @@ function Admin() {
         </div>
       </div>
 
+      {/* Product Details Bar */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-card p-3.5 shadow-sm">
+        <div className="flex items-center gap-3">
+          <img
+            src={productConfig?.photoUrl || defaultOilCan}
+            alt="Product"
+            className="h-12 w-12 rounded-xl object-cover border border-border bg-[#f9f8f4]"
+          />
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-extrabold text-base text-foreground">
+                {productConfig?.nameGu || "સીંગતેલ"} / {productConfig?.nameEn || "Groundnut Oil"}
+              </span>
+              <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+                ₹{productConfig?.price || 3500} / 15KG
+              </span>
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-semibold text-muted-foreground">
+                {productConfig?.tagGu || "ઘાણીનું સીંગતેલ"} • {productConfig?.tagEn || "Unrefined"}
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Live product details on <a href="https://anveek.com" target="_blank" rel="noreferrer" className="text-primary font-medium hover:underline">anveek.com</a> (changes reflect live on storefront, WhatsApp & orders)
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleOpenProductModal}
+          className="rounded-xl bg-primary px-3.5 py-2 text-xs font-bold text-primary-foreground hover:opacity-90 shadow-sm flex items-center gap-1.5 transition-all"
+        >
+          <span>✏️ Edit Product Details & Price</span>
+        </button>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="font-display text-2xl font-extrabold">Orders ({visible.length})</h1>
         <div className="flex gap-2">
@@ -434,7 +614,7 @@ function Admin() {
                 <td className="p-3">{o.phone2 || "-"}</td>
                 <td className="min-w-48 p-3 text-xs leading-relaxed">{o.address}</td>
                 <td className="p-3 font-bold">{o.quantity} <span className="text-[11px] font-normal text-muted-foreground">(15KG)</span></td>
-                <td className="whitespace-nowrap p-3 font-bold text-primary">₹{(o.quantity * 3500).toLocaleString("en-IN")}</td>
+                <td className="whitespace-nowrap p-3 font-bold text-primary">₹{(o.quantity * (productConfig?.price || 3500)).toLocaleString("en-IN")}</td>
                 <td className="p-3">
                   <button
                     onClick={() =>
@@ -660,7 +840,7 @@ function Admin() {
                   <div className="ml-auto rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-right">
                     <span className="text-[11px] text-muted-foreground block">Total Amount</span>
                     <span className="text-base font-extrabold text-primary">
-                      ₹{(editForm.quantity * 3500).toLocaleString("en-IN")}
+                      ₹{(editForm.quantity * (productConfig?.price || 3500)).toLocaleString("en-IN")}
                     </span>
                   </div>
                 </div>
@@ -792,6 +972,209 @@ function Admin() {
                 }`}
               >
                 {busy ? "Saving..." : confirm.kind === "delete" ? "Yes, Delete" : "Yes, confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Product Details Modal */}
+      {showProductModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-3xl border border-border bg-card p-6 shadow-2xl max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-border/60 pb-3">
+              <div>
+                <h3 className="font-display text-xl font-extrabold text-foreground">
+                  Product Settings & Pricing
+                </h3>
+                <p className="text-xs text-muted-foreground">પ્રોડક્ટનું નામ, ફોટો અને ભાવ અપડેટ કરો</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProductModal(false)}
+                className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              {/* Image Preview & Upload */}
+              <div className="flex items-center gap-4 p-3 rounded-2xl bg-muted/40 border border-border/60">
+                <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-border bg-background shadow-xs">
+                  <img
+                    src={productForm.photoPreview || defaultOilCan}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <span className="block text-xs font-bold text-foreground">Product Photo (Tin Image)</span>
+                  <div className="flex flex-wrap gap-2">
+                    <label className="cursor-pointer rounded-xl bg-primary/10 hover:bg-primary/20 text-primary px-3 py-1.5 text-xs font-bold transition-all border border-primary/20">
+                      <span>📁 Upload New Photo</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        className="hidden"
+                        onChange={handlePhotoFileChange}
+                      />
+                    </label>
+                    {(productForm.photoPreview || productForm.photoUrl) && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setProductForm((prev) => ({
+                            ...prev,
+                            photoUrl: "",
+                            photoBase64: undefined,
+                            photoPreview: "",
+                          }))
+                        }
+                        className="rounded-xl border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-muted"
+                      >
+                        Reset to Default
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    Upload PNG, JPG, or WEBP (up to 8MB).
+                  </p>
+                </div>
+              </div>
+
+              {/* Optional Custom Image URL */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Or Image URL (Optional)
+                </label>
+                <input
+                  type="url"
+                  placeholder="https://example.com/tin-photo.jpg"
+                  value={productForm.photoUrl}
+                  onChange={(e) =>
+                    setProductForm((prev) => ({
+                      ...prev,
+                      photoUrl: e.target.value,
+                      photoPreview: e.target.value || prev.photoPreview,
+                    }))
+                  }
+                  className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Price */}
+              <div>
+                <label className="block text-xs font-bold text-foreground mb-1">
+                  Price per 15KG Tin (₹) <span className="text-destructive">*</span>
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-base font-bold text-muted-foreground">₹</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={productForm.price || ""}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, price: Number(e.target.value) }))
+                    }
+                    className="w-full rounded-xl border border-input bg-background pl-8 pr-3 py-2 text-base font-extrabold outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Names */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Product Name (Gujarati) <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={productForm.nameGu}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, nameGu: e.target.value }))
+                    }
+                    placeholder="સીંગતેલ"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Product Name (English) <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={productForm.nameEn}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, nameEn: e.target.value }))
+                    }
+                    placeholder="Groundnut Oil"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Tags / Subtitle */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Tag / Badge (Gujarati)
+                  </label>
+                  <input
+                    type="text"
+                    value={productForm.tagGu}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, tagGu: e.target.value }))
+                    }
+                    placeholder="ઘાણીનું સીંગતેલ"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-foreground mb-1">
+                    Tag / Badge (English)
+                  </label>
+                  <input
+                    type="text"
+                    value={productForm.tagEn}
+                    onChange={(e) =>
+                      setProductForm((prev) => ({ ...prev, tagEn: e.target.value }))
+                    }
+                    placeholder="Unrefined"
+                    className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {productError && (
+                <div className="rounded-xl bg-destructive/10 border border-destructive/20 p-2.5 text-xs font-semibold text-destructive">
+                  {productError}
+                </div>
+              )}
+
+              {productMsg && (
+                <div className="rounded-xl bg-green-500/10 border border-green-500/20 p-2.5 text-xs font-semibold text-green-600 dark:text-green-400">
+                  {productMsg}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2 border-t border-border/60 pt-4">
+              <button
+                type="button"
+                onClick={() => setShowProductModal(false)}
+                disabled={productSaving}
+                className="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveProduct}
+                disabled={productSaving}
+                className="rounded-xl bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:opacity-90 disabled:opacity-50"
+              >
+                {productSaving ? "Saving..." : "Save Product Details"}
               </button>
             </div>
           </div>

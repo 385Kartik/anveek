@@ -6,15 +6,23 @@ import oilCan from "@/assets/anveek-tin.webp";
 import oilLabel from "@/assets/anveek-label.webp";
 import brandLogo from "@/assets/anveek-brand-lockup.png";
 import { t, PRICE, type Lang } from "@/lib/i18n";
-import { createOrder } from "@/lib/orders.functions";
+import { createOrder, getProductConfigFn } from "@/lib/orders.functions";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
+  loader: async () => {
+    try {
+      return await getProductConfigFn();
+    } catch (e) {
+      console.error("[Route /] Loader error:", e);
+      return null;
+    }
+  },
+  head: ({ loaderData }) => ({
     meta: [
-      { title: "Anveek®" },
-      { name: "description", content: "Anveek® સીંગતેલ 15KG ડબ્બો. ઘરે ડિલિવરી." },
-      { property: "og:title", content: "Anveek®" },
-      { property: "og:description", content: "Anveek® સીંગતેલ 15KG ડબ્બો." },
+      { title: `Anveek® — ${loaderData?.nameGu || "સીંગતેલ"}` },
+      { name: "description", content: `Anveek® ${loaderData?.nameGu || "સીંગતેલ"} 15KG ડબ્બો. ઘરે ડિલિવરી.` },
+      { property: "og:title", content: `Anveek® — ${loaderData?.nameEn || "Groundnut Oil"}` },
+      { property: "og:description", content: `Anveek® ${loaderData?.nameGu || "સીંગતેલ"} 15KG ડબ્બો.` },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
     ],
@@ -25,6 +33,7 @@ export const Route = createFileRoute("/")({
 type Step = "shop" | "form" | "confirm" | "done";
 
 function Index() {
+  const productConfig = Route.useLoaderData();
   const [lang, setLang] = useState<Lang>(() => {
     if (typeof window !== "undefined") {
       try {
@@ -35,6 +44,12 @@ function Index() {
     return "gu";
   });
   const L = t[lang];
+  const activePrice = productConfig?.price ?? PRICE;
+  const activePhoto = (productConfig?.photoUrl && productConfig.photoUrl.trim()) ? productConfig.photoUrl : oilCan;
+  const activeTitle = lang === "gu" ? (productConfig?.nameGu || L.title) : (productConfig?.nameEn || L.title);
+  const activeTag = lang === "gu" ? (productConfig?.tagGu || L.tag) : (productConfig?.tagEn || L.tag);
+  const activeSub = lang === "gu" ? (productConfig?.subGu || L.sub) : (productConfig?.subEn || L.sub);
+
   const [activeImg, setActiveImg] = useState<"can" | "label">("can");
   const [qty, setQty] = useState(1);
   const [step, setStep] = useState<Step>("shop");
@@ -43,7 +58,7 @@ function Index() {
   const [busy, setBusy] = useState(false);
   const [fail, setFail] = useState("");
   const submit = useServerFn(createOrder);
-  const total = qty * PRICE;
+  const total = qty * activePrice;
 
   const changeLang = (l: Lang) => {
     setLang(l);
@@ -133,8 +148,8 @@ function Index() {
             {/* Main Interactive Showcase Image */}
             <div className="relative overflow-hidden rounded-3xl bg-card border border-border/60 shadow-lg">
               <img
-                src={activeImg === "can" ? oilCan : oilLabel}
-                alt={L.title}
+                src={activeImg === "can" ? activePhoto : oilLabel}
+                alt={activeTitle}
                 width={900}
                 height={900}
                 fetchPriority="high"
@@ -146,7 +161,7 @@ function Index() {
                 }`}
               />
               <span className="absolute left-3 top-3 rounded-full bg-accent px-3 py-1 text-xs sm:text-sm font-bold text-accent-foreground shadow-sm">
-                {L.tag}
+                {activeTag}
               </span>
               <span className="absolute right-3 top-3 rounded-full bg-card/90 backdrop-blur px-2.5 py-1 text-xs font-semibold text-foreground border border-border/50">
                 {activeImg === "can" ? L.badgeCan : L.badgeLabel}
@@ -165,7 +180,7 @@ function Index() {
                 }`}
               >
                 <img
-                  src={oilCan}
+                  src={activePhoto}
                   alt="Can"
                   loading="lazy"
                   decoding="async"
@@ -237,10 +252,10 @@ function Index() {
           <div className="space-y-5 pt-3 md:pt-0">
             <div>
               <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-extrabold leading-tight text-foreground">
-                {L.title}
+                {activeTitle}
               </h1>
               <p className="mt-2 text-base sm:text-lg text-muted-foreground leading-relaxed">
-                {L.sub}
+                {activeSub}
               </p>
               <div className="mt-3 flex items-center gap-2">
                 <span className="text-accent text-sm font-bold">★★★★★</span>
@@ -272,7 +287,7 @@ function Index() {
                   <span className="text-base sm:text-lg font-bold block">{L.box}</span>
                   <span className="text-xs opacity-80">{L.netWeight}</span>
                 </div>
-                <span className="font-display text-3xl sm:text-4xl font-extrabold">₹{PRICE}</span>
+                <span className="font-display text-3xl sm:text-4xl font-extrabold">₹{activePrice}</span>
               </div>
               <div className="mt-4 flex items-center justify-between border-t border-secondary-foreground/15 pt-3">
                 <span className="font-semibold text-sm sm:text-base">{L.qty}</span>
@@ -313,9 +328,9 @@ function Index() {
       ) : (
         <section className="max-w-xl mx-auto pt-2">
           <div className="flex items-center gap-3 rounded-2xl bg-card border border-border/50 p-3 shadow-sm">
-            <img src={oilCan} alt="" width={64} height={64} className="h-16 w-16 rounded-xl object-cover shrink-0" />
+            <img src={activePhoto} alt="" width={64} height={64} className="h-16 w-16 rounded-xl object-cover shrink-0" />
             <div className="min-w-0 flex-1">
-              <p className="font-bold text-foreground">{L.title}</p>
+              <p className="font-bold text-foreground">{activeTitle}</p>
               <p className="text-sm text-muted-foreground">{L.box} × {qty}</p>
             </div>
             <p className="font-display text-xl font-extrabold text-foreground">₹{total}</p>

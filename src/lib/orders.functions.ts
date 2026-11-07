@@ -47,6 +47,12 @@ export const createOrder = createServerFn({ method: "POST" })
 
     // Trigger WhatsApp Order Confirmation Message via Baileys
     try {
+      let unitPrice = PRICE;
+      try {
+        const { getProductConfig } = await import("@/lib/product-config.server");
+        unitPrice = getProductConfig().price || PRICE;
+      } catch {}
+
       const { sendOrderConfirmationMessage } = await import("@/lib/whatsapp.server");
       await sendOrderConfirmationMessage({
         name: data.name,
@@ -54,7 +60,7 @@ export const createOrder = createServerFn({ method: "POST" })
         quantity: data.quantity,
         address: data.address,
         orderId: insertedOrder?.id,
-        totalPrice: data.quantity * PRICE,
+        totalPrice: data.quantity * unitPrice,
         lang: orderLang,
       });
     } catch (waError) {
@@ -186,6 +192,12 @@ export const updateOrder = createServerFn({ method: "POST" })
 
     if (data.notifyCustomer) {
       try {
+        let unitPrice = PRICE;
+        try {
+          const { getProductConfig } = await import("@/lib/product-config.server");
+          unitPrice = getProductConfig().price || PRICE;
+        } catch {}
+
         const { sendOrderUpdatedMessage } = await import("@/lib/whatsapp.server");
         await sendOrderUpdatedMessage({
           name: data.name,
@@ -193,7 +205,7 @@ export const updateOrder = createServerFn({ method: "POST" })
           quantity: data.quantity,
           address: data.address,
           orderId: data.id,
-          totalPrice: data.quantity * PRICE,
+          totalPrice: data.quantity * unitPrice,
           lang: data.lang,
         });
       } catch (waErr) {
@@ -247,4 +259,50 @@ export const disconnectWhatsAppFn = createServerFn({ method: "POST" })
     checkPw(data.password);
     const { disconnectWhatsApp } = await import("@/lib/whatsapp.server");
     return await disconnectWhatsApp();
+  });
+
+export const getProductConfigFn = createServerFn({ method: "GET" })
+  .handler(async () => {
+    const { getProductConfig } = await import("@/lib/product-config.server");
+    return getProductConfig();
+  });
+
+const updateProductConfigSchema = z.object({
+  password: z.string().max(200),
+  nameGu: z.string().trim().min(1).max(100),
+  nameEn: z.string().trim().min(1).max(100),
+  tagGu: z.string().trim().max(100).optional(),
+  tagEn: z.string().trim().max(100).optional(),
+  subGu: z.string().trim().max(200).optional(),
+  subEn: z.string().trim().max(200).optional(),
+  price: z.number().int().min(1).max(1000000),
+  photoUrl: z.string().max(2000).optional(),
+  photoBase64: z.string().optional(),
+  photoMimeType: z.string().optional(),
+});
+
+export const updateProductConfigFn = createServerFn({ method: "POST" })
+  .inputValidator((i: unknown) => updateProductConfigSchema.parse(i))
+  .handler(async ({ data }) => {
+    checkPw(data.password);
+    const { saveProductConfig, saveUploadedProductImage } = await import("@/lib/product-config.server");
+
+    let finalPhotoUrl = data.photoUrl ?? "";
+
+    if (data.photoBase64) {
+      finalPhotoUrl = saveUploadedProductImage(data.photoBase64, data.photoMimeType);
+    }
+
+    const updated = saveProductConfig({
+      nameGu: data.nameGu,
+      nameEn: data.nameEn,
+      tagGu: data.tagGu,
+      tagEn: data.tagEn,
+      subGu: data.subGu,
+      subEn: data.subEn,
+      price: data.price,
+      photoUrl: finalPhotoUrl,
+    });
+
+    return updated;
   });
