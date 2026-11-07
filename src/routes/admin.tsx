@@ -52,6 +52,7 @@ function Admin() {
     phone2: string;
     address: string;
     quantity: number;
+    unitPrice: number;
     lang: "gu" | "en";
     notifyCustomer: boolean;
   }>({
@@ -60,6 +61,7 @@ function Admin() {
     phone2: "",
     address: "",
     quantity: 1,
+    unitPrice: 3500,
     lang: "gu",
     notifyCustomer: true,
   });
@@ -322,6 +324,7 @@ function Admin() {
       phone2: o.phone2 ?? "",
       address: o.address,
       quantity: o.quantity,
+      unitPrice: o.unitPrice || 3500,
       lang: initialLang,
       notifyCustomer: isWaConnected,
     });
@@ -366,6 +369,7 @@ function Admin() {
           phone2: phone2Clean || undefined,
           address: addressClean,
           quantity: editForm.quantity,
+          unitPrice: editForm.unitPrice,
           lang: editForm.lang,
           notifyCustomer: editForm.notifyCustomer,
         },
@@ -376,6 +380,8 @@ function Admin() {
           ? (res as any).editCount
           : (editingOrder.editCount || 0) + 1;
       const nextLastEditedAt = (res as any)?.lastEditedAt || new Date().toISOString();
+      const updatedUnitPrice = (res as any)?.unitPrice || editForm.unitPrice;
+      const updatedTotalPrice = (res as any)?.totalPrice || (editForm.quantity * updatedUnitPrice);
 
       setRows(
         (r) =>
@@ -388,6 +394,8 @@ function Admin() {
                   phone2: phone2Clean || null,
                   address: addressClean,
                   quantity: editForm.quantity,
+                  unitPrice: updatedUnitPrice,
+                  totalPrice: updatedTotalPrice,
                   lang: editForm.lang,
                   editCount: nextEditCount,
                   lastEditedAt: nextLastEditedAt,
@@ -414,7 +422,8 @@ function Admin() {
         "Phone Number 2": o.phone2 ?? "",
         Address: o.address,
         "Quantity (15KG Tins)": o.quantity,
-        "Total Amount (₹)": o.quantity * (productConfig?.price || 3500),
+        "Rate / Unit Price (₹)": o.unitPrice || 3500,
+        "Total Amount (₹)": o.totalPrice || (o.quantity * (o.unitPrice || 3500)),
         Payment: o.payment_status,
         Status: o.status,
         Language: o.lang === "en" ? "English" : "Gujarati",
@@ -614,7 +623,10 @@ function Admin() {
                 <td className="p-3">{o.phone2 || "-"}</td>
                 <td className="min-w-48 p-3 text-xs leading-relaxed">{o.address}</td>
                 <td className="p-3 font-bold">{o.quantity} <span className="text-[11px] font-normal text-muted-foreground">(15KG)</span></td>
-                <td className="whitespace-nowrap p-3 font-bold text-primary">₹{(o.quantity * (productConfig?.price || 3500)).toLocaleString("en-IN")}</td>
+                <td className="whitespace-nowrap p-3 font-bold text-primary">
+                  <div>₹{(o.totalPrice || o.quantity * (o.unitPrice || 3500)).toLocaleString("en-IN")}</div>
+                  <div className="text-[11px] font-normal text-muted-foreground">(@ ₹{o.unitPrice || 3500}/tin)</div>
+                </td>
                 <td className="p-3">
                   <button
                     onClick={() =>
@@ -840,10 +852,36 @@ function Admin() {
                   <div className="ml-auto rounded-xl bg-primary/10 border border-primary/20 px-3.5 py-2 text-right">
                     <span className="text-[11px] text-muted-foreground block">Total Amount</span>
                     <span className="text-base font-extrabold text-primary">
-                      ₹{(editForm.quantity * (productConfig?.price || 3500)).toLocaleString("en-IN")}
+                      ₹{(editForm.quantity * (editForm.unitPrice || 3500)).toLocaleString("en-IN")}
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* Order Rate / Unit Price */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                  Rate per 15KG Tin (₹)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-2 text-sm font-bold text-muted-foreground">₹</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100000}
+                    value={editForm.unitPrice || 3500}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        unitPrice: Math.max(1, parseInt(e.target.value) || 3500),
+                      })
+                    }
+                    className="w-full rounded-xl border border-input bg-background pl-7 pr-3 py-2 text-sm font-bold"
+                  />
+                </div>
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Rate locked at order time (all previous orders stay ₹3500; new orders use new rate).
+                </p>
               </div>
 
               {/* WhatsApp Notification Language */}

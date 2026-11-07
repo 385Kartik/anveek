@@ -35,24 +35,38 @@ export const createOrder = createServerFn({ method: "POST" })
     }
 
     const orderLang = String(data.lang || "").toLowerCase().trim() === "en" ? "en" : "gu";
+    let currentUnitPrice = PRICE;
+    let currentProductName = orderLang === "en" ? "Groundnut Oil" : "સીંગતેલ";
+
+    try {
+      const { getProductConfig } = await import("@/lib/product-config.server");
+      const cfg = getProductConfig();
+      if (cfg?.price && cfg.price > 0) {
+        currentUnitPrice = cfg.price;
+      }
+      if (orderLang === "en" && cfg?.nameEn) currentProductName = cfg.nameEn;
+      if (orderLang === "gu" && cfg?.nameGu) currentProductName = cfg.nameGu;
+    } catch (cfgErr) {
+      console.error("[createOrder] Error reading product config:", cfgErr);
+    }
+
     if (insertedOrder?.id) {
       try {
-        const { saveOrderLang } = await import("@/lib/order-meta.server");
-        saveOrderLang(insertedOrder.id, orderLang);
+        const { saveOrderCreationMeta } = await import("@/lib/order-meta.server");
+        saveOrderCreationMeta(insertedOrder.id, {
+          lang: orderLang,
+          unitPrice: currentUnitPrice,
+          quantity: data.quantity,
+          productName: currentProductName,
+        });
       } catch (metaErr) {
-        console.error("[createOrder] Failed to save order lang metadata:", metaErr);
+        console.error("[createOrder] Failed to save order creation metadata:", metaErr);
       }
     }
-    console.log(`[createOrder] Triggering WhatsApp confirmation for order ${insertedOrder?.id} with lang="${orderLang}"`);
+    console.log(`[createOrder] Triggering WhatsApp confirmation for order ${insertedOrder?.id} with lang="${orderLang}", unitPrice=${currentUnitPrice}`);
 
     // Trigger WhatsApp Order Confirmation Message via Baileys
     try {
-      let unitPrice = PRICE;
-      try {
-        const { getProductConfig } = await import("@/lib/product-config.server");
-        unitPrice = getProductConfig().price || PRICE;
-      } catch {}
-
       const { sendOrderConfirmationMessage } = await import("@/lib/whatsapp.server");
       await sendOrderConfirmationMessage({
         name: data.name,
@@ -60,7 +74,7 @@ export const createOrder = createServerFn({ method: "POST" })
         quantity: data.quantity,
         address: data.address,
         orderId: insertedOrder?.id,
-        totalPrice: data.quantity * unitPrice,
+        totalPrice: data.quantity * currentUnitPrice,
         lang: orderLang,
       });
     } catch (waError) {
@@ -92,11 +106,15 @@ export const listOrders = createServerFn({ method: "POST" })
     const { getOrderMeta } = await import("@/lib/order-meta.server");
     return (rows || []).map((r) => {
       const meta = getOrderMeta(r.id, r.name, r.address);
+      const unitPrice = typeof meta.unitPrice === "number" && meta.unitPrice > 0 ? meta.unitPrice : 3500;
+      const totalPrice = typeof meta.totalPrice === "number" && meta.totalPrice > 0 ? meta.totalPrice : r.quantity * unitPrice;
       return {
         ...r,
         lang: meta.lang,
         editCount: meta.editCount,
         lastEditedAt: meta.lastEditedAt,
+        unitPrice,
+        totalPrice,
       };
     });
   });
@@ -157,6 +175,7 @@ const updateOrderSchema = z.object({
   phone2: z.union([phone, z.literal("")]).optional(),
   address: z.string().trim().min(5).max(500),
   quantity: z.number().int().min(1).max(50),
+  unitPrice: z.number().int().min(1).max(1000000).optional(),
   lang: z.enum(["gu", "en"]).optional().default("gu"),
   notifyCustomer: z.boolean().optional(),
 });
@@ -182,22 +201,30 @@ export const updateOrder = createServerFn({ method: "POST" })
       throw new Error("Update failed: " + error.message);
     }
 
-    let editMeta = { editCount: 1, lastEditedAt: new Date().toISOString() };
+    const { getOrderMeta, recordOrderEdit } = await import("@/lib/order-meta.server");
+    const existingMeta = getOrderMeta(data.id);
+    const lockedUnitPrice = data.unitPrice && data.unitPrice > 0 ? data.unitPrice : existingMeta.unitPrice;
+    const finalTotalPrice = data.quantity * lockedUnitPrice;
+
+    let editMeta = {
+      editCount: (existingMeta.editCount || 0) + 1,
+      lastEditedAt: new Date().toISOString(),
+      unitPrice: lockedUnitPrice,
+      totalPrice: finalTotalPrice,
+    };
+
     try {
-      const { recordOrderEdit } = await import("@/lib/order-meta.server");
-      editMeta = recordOrderEdit(data.id, data.lang);
+      editMeta = recordOrderEdit(data.id, {
+        lang: data.lang,
+        quantity: data.quantity,
+        unitPrice: lockedUnitPrice,
+      });
     } catch (metaErr) {
-      console.error("[updateOrder] Failed to save order lang metadata:", metaErr);
+      console.error("[updateOrder] Failed to save order metadata:", metaErr);
     }
 
     if (data.notifyCustomer) {
       try {
-        let unitPrice = PRICE;
-        try {
-          const { getProductConfig } = await import("@/lib/product-config.server");
-          unitPrice = getProductConfig().price || PRICE;
-        } catch {}
-
         const { sendOrderUpdatedMessage } = await import("@/lib/whatsapp.server");
         await sendOrderUpdatedMessage({
           name: data.name,
@@ -205,7 +232,7 @@ export const updateOrder = createServerFn({ method: "POST" })
           quantity: data.quantity,
           address: data.address,
           orderId: data.id,
-          totalPrice: data.quantity * unitPrice,
+          totalPrice: finalTotalPrice,
           lang: data.lang,
         });
       } catch (waErr) {
@@ -213,7 +240,13 @@ export const updateOrder = createServerFn({ method: "POST" })
       }
     }
 
-    return { ok: true, editCount: editMeta.editCount, lastEditedAt: editMeta.lastEditedAt };
+    return {
+      ok: true,
+      editCount: editMeta.editCount,
+      lastEditedAt: editMeta.lastEditedAt,
+      unitPrice: editMeta.unitPrice,
+      totalPrice: editMeta.totalPrice,
+    };
   });
 
 export const deleteOrder = createServerFn({ method: "POST" })
